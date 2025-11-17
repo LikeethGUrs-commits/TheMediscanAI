@@ -35,7 +35,7 @@ export default function DoctorDashboard() {
   const [showFaceRecognition, setShowFaceRecognition] = useState(false);
 
   const { data: searchResults, isLoading: isSearching } = useQuery({
-    queryKey: ["/api/patients/search", searchQuery, searchType],
+    queryKey: [`/api/patients/search?q=${searchQuery}&type=${searchType}`],
     enabled: searchQuery.length > 0,
   });
 
@@ -70,6 +70,7 @@ export default function DoctorDashboard() {
     mutationFn: async ({ recordId, note }: { recordId: string; note: string }) => {
       return await apiRequest("POST", "/api/notes", {
         healthRecordId: recordId,
+        doctorUserId: user?.id,
         note,
       });
     },
@@ -79,7 +80,13 @@ export default function DoctorDashboard() {
         description: "Your note has been saved successfully",
       });
       setNoteText("");
-      queryClient.invalidateQueries({ queryKey: ["/api/patients/search"] });
+      // Invalidate all search queries by matching the pattern
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          query.queryKey[0] && 
+          typeof query.queryKey[0] === 'string' && 
+          query.queryKey[0].startsWith('/api/patients/search')
+      });
     },
     onError: (error: Error) => {
       toast({

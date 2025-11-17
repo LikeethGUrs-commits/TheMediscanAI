@@ -2,8 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { generatePatientSummary } from "./openai";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { insertUserSchema, insertHealthRecordSchema, insertDoctorNoteSchema } from "@shared/schema";
+import { insertUserSchema, insertHealthRecordSchema, insertDoctorNoteSchema, doctors, users } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
@@ -122,12 +124,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/doctors/hospital", async (req, res) => {
     try {
-      const hospitalId = req.query.hospitalId as string;
-      if (!hospitalId) {
+      const hospitalRoleId = req.query.hospitalId as string;
+      if (!hospitalRoleId) {
         return res.status(400).json({ message: "Hospital ID required" });
       }
 
-      const doctors = await storage.getDoctorsByHospital(hospitalId);
+      const hospital = await storage.getHospitalByHospitalId(hospitalRoleId);
+      if (!hospital) {
+        return res.status(404).json({ message: "Hospital not found" });
+      }
+
+      const doctors = await storage.getDoctorsByHospital(hospital.id);
       res.json(doctors);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to fetch doctors" });
@@ -137,7 +144,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Health Records routes
   app.post("/api/health-records", async (req, res) => {
     try {
-      const validatedData = insertHealthRecordSchema.parse(req.body);
+      const data = req.body;
+      const hospitalRoleId = req.query.hospitalId as string || req.body.hospitalRoleId;
+      
+      if (!hospitalRoleId) {
+        return res.status(400).json({ message: "Hospital ID required" });
+      }
+
+      // Get the hospital from the roleId
+      const hospital = await storage.getHospitalByHospitalId(hospitalRoleId);
+      if (!hospital) {
+        return res.status(404).json({ message: "Hospital not found" });
+      }
+
+      // Verify patient exists
+      const patient = await storage.getPatientById(data.patientId);
+      if (!patient) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+
+      // Verify doctor exists and belongs to this hospital
+      const [doctor] = await db.select().from(doctors).where(eq(doctors.id, data.doctorId)).limit(1);
+      if (!doctor) {
+        return res.status(404).json({ message: "Doctor not found" });
+      }
+      
+      if (doctor.hospitalId !== hospital.id) {
+        return res.status(403).json({ message: "Doctor does not belong to this hospital" });
+      }
+
+      const recordData = {
+        patientId: data.patientId,
+        hospitalId: hospital.id,
+        doctorId: data.doctorId,
+        dateTime: new Date(data.dateTime),
+        diseaseName: data.diseaseName,
+        diseaseDescription: data.diseaseDescription,
+        treatment: data.treatment || null,
+        prescription: data.prescription || null,
+        riskLevel: data.riskLevel,
+        emergencyWarnings: data.emergencyWarnings || null,
+      };
+
+      const validatedData = insertHealthRecordSchema.parse(recordData);
       const record = await storage.createHealthRecord(validatedData);
       res.json(record);
     } catch (error: any) {
@@ -147,12 +196,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/health-records/recent", async (req, res) => {
     try {
-      const hospitalId = req.query.hospitalId as string;
-      if (!hospitalId) {
+      const hospitalRoleId = req.query.hospitalId as string;
+      if (!hospitalRoleId) {
         return res.status(400).json({ message: "Hospital ID required" });
       }
 
-      const records = await storage.getRecentRecordsByHospital(hospitalId);
+      const hospital = await storage.getHospitalByHospitalId(hospitalRoleId);
+      if (!hospital) {
+        return res.status(404).json({ message: "Hospital not found" });
+      }
+
+      const records = await storage.getRecentRecordsByHospital(hospital.id);
       res.json(records);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to fetch records" });
@@ -172,10 +226,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Doctor Notes routes
   app.post("/api/notes", async (req, res) => {
     try {
-      const validatedData = insertDoctorNoteSchema.parse(req.body);
-      const note = await storage.createDoctorNote(validatedData);
-      res.json(note);
+      const { healthRecordId, doctorUserId, note } = req.body;
+      
+      if (!healthRecordId || !doctorUserId || !note) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // The doctorUserId is the user's ID, we just pass it through as the schema expects
+      const noteData = {
+        healthRecordId,
+        doctorUserId, // This is already the correct user ID
+        note,
+      };
+
+      const createdNote = await storage.createDoctorNote(noteData);
+      res.json(createdNote);
     } catch (error: any) {
+      console.error("Note creation error:", error);
       res.status(400).json({ message: error.message || "Failed to add note" });
     }
   });

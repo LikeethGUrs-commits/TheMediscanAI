@@ -37,13 +37,13 @@ export default function PatientDashboard() {
   });
 
   const { data: patientData, isLoading } = useQuery<PatientWithRecords>({
-    queryKey: ["/api/patients/me"],
+    queryKey: [`/api/patients/me?userId=${user?.id}`],
     enabled: !!user,
   });
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: Partial<Patient>) => {
-      return await apiRequest("PATCH", "/api/patients/me", data);
+      return await apiRequest("PATCH", `/api/patients/me?userId=${user?.id}`, data);
     },
     onSuccess: () => {
       toast({
@@ -51,7 +51,12 @@ export default function PatientDashboard() {
         description: "Your information has been saved successfully",
       });
       setIsEditing(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/patients/me"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          query.queryKey[0] && 
+          typeof query.queryKey[0] === 'string' && 
+          query.queryKey[0].startsWith('/api/patients/me')
+      });
     },
     onError: (error: Error) => {
       toast({

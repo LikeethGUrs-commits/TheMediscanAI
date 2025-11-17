@@ -50,18 +50,18 @@ export default function HospitalDashboard() {
   });
 
   const { data: doctors } = useQuery({
-    queryKey: ["/api/doctors/hospital"],
+    queryKey: [`/api/doctors/hospital?hospitalId=${user?.roleId}`],
     enabled: !!user,
   });
 
   const { data: recentRecords } = useQuery({
-    queryKey: ["/api/health-records/recent"],
+    queryKey: [`/api/health-records/recent?hospitalId=${user?.roleId}`],
     enabled: !!user,
   });
 
   const createRecordMutation = useMutation({
     mutationFn: async (data: UploadFormData) => {
-      return await apiRequest("POST", "/api/health-records", data);
+      return await apiRequest("POST", `/api/health-records?hospitalId=${user?.roleId}`, data);
     },
     onSuccess: () => {
       toast({
@@ -79,7 +79,12 @@ export default function HospitalDashboard() {
         riskLevel: "low",
         emergencyWarnings: "",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/health-records/recent"] });
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          query.queryKey[0] && 
+          typeof query.queryKey[0] === 'string' && 
+          query.queryKey[0].startsWith('/api/health-records/recent')
+      });
     },
     onError: (error: Error) => {
       toast({

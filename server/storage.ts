@@ -23,6 +23,7 @@ export interface IStorage {
   searchPatients(query: string, searchType: "id" | "name" | "phone"): Promise<any[]>;
   updatePatient(id: string, data: Partial<Patient>): Promise<Patient>;
   getAllPatients(): Promise<Patient[]>;
+  getAllPatientsByHospital(hospitalId: string): Promise<Patient[]>;
   
   // Doctors
   getDoctorsByHospital(hospitalId: string): Promise<Doctor[]>;
@@ -181,6 +182,25 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(patients).orderBy(patients.name);
   }
 
+  async getAllPatientsByHospital(hospitalId: string): Promise<Patient[]> {
+    // Get all patients who have records from this hospital
+    const patientIds = await db
+      .selectDistinct({ patientId: healthRecords.patientId })
+      .from(healthRecords)
+      .where(eq(healthRecords.hospitalId, hospitalId));
+    
+    if (patientIds.length === 0) {
+      return [];
+    }
+
+    const ids = patientIds.map(p => p.patientId);
+    return await db
+      .select()
+      .from(patients)
+      .where(sql`${patients.id} IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`)
+      .orderBy(patients.name);
+  }
+
   async getDoctorsByHospital(hospitalId: string): Promise<Doctor[]> {
     return await db
       .select()
@@ -273,10 +293,15 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async createDoctorNote(insertNote: InsertDoctorNote): Promise<DoctorNote> {
+  async createDoctorNote(insertNote: any): Promise<DoctorNote> {
+    // insertNote already has the correct structure from the routes
     const [note] = await db
       .insert(doctorNotes)
-      .values(insertNote)
+      .values({
+        healthRecordId: insertNote.healthRecordId,
+        doctorUserId: insertNote.doctorUserId,
+        note: insertNote.note,
+      })
       .returning();
     return note;
   }
