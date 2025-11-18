@@ -51,11 +51,11 @@ export default function PatientDashboard() {
         description: "Your information has been saved successfully",
       });
       setIsEditing(false);
-      queryClient.invalidateQueries({ 
-        predicate: (query) => 
-          query.queryKey[0] && 
-          typeof query.queryKey[0] === 'string' && 
-          query.queryKey[0].startsWith('/api/patients/me')
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key0 = (query as any).queryKey?.[0];
+          return typeof key0 === 'string' && key0.startsWith('/api/patients/me');
+        }
       });
     },
     onError: (error: Error) => {

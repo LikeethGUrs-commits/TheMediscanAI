@@ -2,10 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { generatePatientSummary } from "./openai";
-import { db } from "./db";
-import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { insertUserSchema, insertHealthRecordSchema, insertDoctorNoteSchema, doctors, users } from "@shared/schema";
+import { insertUserSchema, insertHealthRecordSchema, insertDoctorNoteSchema } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
@@ -164,12 +162,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify doctor exists and belongs to this hospital
-      const [doctor] = await db.select().from(doctors).where(eq(doctors.id, data.doctorId)).limit(1);
+      const doctor = await storage.getDoctorById(data.doctorId);
       if (!doctor) {
         return res.status(404).json({ message: "Doctor not found" });
       }
-      
-      if (doctor.hospitalId !== hospital.id) {
+
+      if ((doctor as any).hospitalId !== hospital.id) {
         return res.status(403).json({ message: "Doctor does not belong to this hospital" });
       }
 

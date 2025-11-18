@@ -1,194 +1,252 @@
-import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
-import { createInsertSchema } from "drizzle-zod";
+// shared/schema.ts
+import mongoose, { Schema, Document } from "mongoose";
 import { z } from "zod";
 
-// Users table - supports doctors, patients, and hospital authorities
-export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  age: integer("age"),
-  role: text("role").notNull(), // 'doctor' | 'patient' | 'hospital'
-  email: text("email"),
-  phone: text("phone"),
-  password: text("password").notNull(),
-  roleId: text("role_id").notNull(), // doctor_id, patient_id, or hospital_id
-  profileImage: text("profile_image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+// Mongoose document interfaces
+export interface IUser extends Document {
+  id: string;
+  name: string;
+  age?: number;
+  role: string;
+  email?: string;
+  phone?: string;
+  password: string;
+  roleId: string;
+  profileImage?: string;
+  createdAt: Date;
+}
+
+export interface IHospital extends Document {
+  id: string;
+  hospitalId: string;
+  name: string;
+  location: string;
+  contactNumber?: string;
+  email?: string;
+  logo?: string;
+  createdAt: Date;
+}
+
+export interface IDoctor extends Document {
+  id: string;
+  doctorId: string;
+  name: string;
+  specialization?: string;
+  hospitalId: string;
+  contactNumber?: string;
+  email?: string;
+  profileImage?: string;
+  createdAt: Date;
+}
+
+export interface IPatient extends Document {
+  id: string;
+  patientId: string;
+  name: string;
+  age?: number;
+  gender?: string;
+  phone?: string;
+  email?: string;
+  bloodGroup?: string;
+  address?: string;
+  emergencyContact?: string;
+  profileImage?: string;
+  faceEmbedding?: string;
+  createdAt: Date;
+}
+
+export interface IHealthRecord extends Document {
+  id: string;
+  patientId: string;
+  hospitalId: string;
+  doctorId: string;
+  dateTime: Date;
+  diseaseName: string;
+  diseaseDescription: string;
+  treatment?: string | null;
+  prescription?: string | null;
+  riskLevel: string;
+  emergencyWarnings?: string | null;
+  mediaFiles?: Array<{ type: string; url: string; name: string }>;
+  isEditable: boolean;
+  editableUntil?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface IDoctorNote extends Document {
+  id: string;
+  healthRecordId: string;
+  doctorUserId: string;
+  note: string;
+  createdAt: Date;
+}
+
+// Define Mongoose schemas
+const baseOptions = { timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" } };
+
+const UserSchema = new Schema({
+  id: { type: String, required: true },
+  name: { type: String, required: true },
+  age: Number,
+  role: { type: String, required: true },
+  email: String,
+  phone: String,
+  password: { type: String, required: true },
+  roleId: { type: String, required: true },
+  profileImage: String,
+}, baseOptions);
+
+const HospitalSchema = new Schema({
+  id: { type: String, required: true },
+  hospitalId: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  location: { type: String, required: true },
+  contactNumber: String,
+  email: String,
+  logo: String,
+}, baseOptions);
+
+const DoctorSchema = new Schema({
+  id: { type: String, required: true },
+  doctorId: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  specialization: String,
+  hospitalId: { type: String, required: true },
+  contactNumber: String,
+  email: String,
+  profileImage: String,
+}, baseOptions);
+
+const PatientSchema = new Schema({
+  id: { type: String, required: true },
+  patientId: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  age: Number,
+  gender: String,
+  phone: String,
+  email: String,
+  bloodGroup: String,
+  address: String,
+  emergencyContact: String,
+  profileImage: String,
+  faceEmbedding: String,
+}, baseOptions);
+
+const HealthRecordSchema = new Schema({
+  id: { type: String, required: true },
+  patientId: { type: String, required: true },
+  hospitalId: { type: String, required: true },
+  doctorId: { type: String, required: true },
+  dateTime: { type: Date, required: true },
+  diseaseName: { type: String, required: true },
+  diseaseDescription: { type: String, required: true },
+  treatment: { type: String, default: null },
+  prescription: { type: String, default: null },
+  riskLevel: { type: String, required: true },
+  emergencyWarnings: { type: String, default: null },
+  mediaFiles: { type: Array, default: [] },
+  isEditable: { type: Boolean, default: true },
+  editableUntil: Date,
+}, baseOptions);
+
+const DoctorNoteSchema = new Schema({
+  id: { type: String, required: true },
+  healthRecordId: { type: String, required: true },
+  doctorUserId: { type: String, required: true },
+  note: { type: String, required: true },
+}, { timestamps: { createdAt: "createdAt" } });
+
+// Register models
+export const Users = mongoose.models.Users || mongoose.model<IUser>("Users", UserSchema);
+export const Hospitals = mongoose.models.Hospitals || mongoose.model<IHospital>("Hospitals", HospitalSchema);
+export const Doctors = mongoose.models.Doctors || mongoose.model<IDoctor>("Doctors", DoctorSchema);
+export const Patients = mongoose.models.Patients || mongoose.model<IPatient>("Patients", PatientSchema);
+export const HealthRecords = mongoose.models.HealthRecords || mongoose.model<IHealthRecord>("HealthRecords", HealthRecordSchema);
+export const DoctorNotes = mongoose.models.DoctorNotes || mongoose.model<IDoctorNote>("DoctorNotes", DoctorNoteSchema);
+
+// Zod schemas used by routes for input validation
+export const insertUserSchema = z.object({
+  id: z.string().optional(),
+  name: z.string(),
+  age: z.number().optional(),
+  role: z.string(),
+  email: z.string().email().optional(),
+  phone: z.string().optional(),
+  password: z.string(),
+  roleId: z.string(),
+  profileImage: z.string().optional(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
-  notesAsDoctor: many(doctorNotes),
-}));
-
-// Hospitals table
-export const hospitals = pgTable("hospitals", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  hospitalId: text("hospital_id").notNull().unique(),
-  name: text("name").notNull(),
-  location: text("location").notNull(),
-  contactNumber: text("contact_number"),
-  email: text("email"),
-  logo: text("logo"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+export const insertHospitalSchema = z.object({
+  id: z.string().optional(),
+  hospitalId: z.string(),
+  name: z.string(),
+  location: z.string(),
+  contactNumber: z.string().optional(),
+  email: z.string().optional(),
+  logo: z.string().optional(),
 });
 
-export const hospitalsRelations = relations(hospitals, ({ many }) => ({
-  doctors: many(doctors),
-  healthRecords: many(healthRecords),
-}));
-
-// Doctors table
-export const doctors = pgTable("doctors", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  doctorId: text("doctor_id").notNull().unique(),
-  name: text("name").notNull(),
-  specialization: text("specialization"),
-  hospitalId: varchar("hospital_id").references(() => hospitals.id).notNull(),
-  contactNumber: text("contact_number"),
-  email: text("email"),
-  profileImage: text("profile_image"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+export const insertDoctorSchema = z.object({
+  id: z.string().optional(),
+  doctorId: z.string(),
+  name: z.string(),
+  specialization: z.string().optional(),
+  hospitalId: z.string(),
+  contactNumber: z.string().optional(),
+  email: z.string().optional(),
+  profileImage: z.string().optional(),
 });
 
-export const doctorsRelations = relations(doctors, ({ one, many }) => ({
-  hospital: one(hospitals, {
-    fields: [doctors.hospitalId],
-    references: [hospitals.id],
-  }),
-  healthRecords: many(healthRecords),
-  notes: many(doctorNotes),
-}));
-
-// Patients table
-export const patients = pgTable("patients", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  patientId: text("patient_id").notNull().unique(),
-  name: text("name").notNull(),
-  age: integer("age"),
-  gender: text("gender"),
-  phone: text("phone"),
-  email: text("email"),
-  bloodGroup: text("blood_group"),
-  address: text("address"),
-  emergencyContact: text("emergency_contact"),
-  profileImage: text("profile_image"),
-  faceEmbedding: text("face_embedding"), // For face recognition demo
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+export const insertPatientSchema = z.object({
+  id: z.string().optional(),
+  patientId: z.string(),
+  name: z.string(),
+  age: z.number().optional(),
+  gender: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  bloodGroup: z.string().optional(),
+  address: z.string().optional(),
+  emergencyContact: z.string().optional(),
+  profileImage: z.string().optional(),
+  faceEmbedding: z.string().optional(),
 });
 
-export const patientsRelations = relations(patients, ({ many }) => ({
-  healthRecords: many(healthRecords),
-}));
-
-// Health Records table
-export const healthRecords = pgTable("health_records", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  patientId: varchar("patient_id").references(() => patients.id).notNull(),
-  hospitalId: varchar("hospital_id").references(() => hospitals.id).notNull(),
-  doctorId: varchar("doctor_id").references(() => doctors.id).notNull(),
-  dateTime: timestamp("date_time").notNull(),
-  diseaseName: text("disease_name").notNull(),
-  diseaseDescription: text("disease_description").notNull(),
-  treatment: text("treatment"),
-  prescription: text("prescription"),
-  riskLevel: text("risk_level").notNull(), // 'low' | 'medium' | 'high' | 'critical'
-  emergencyWarnings: text("emergency_warnings"),
-  mediaFiles: jsonb("media_files").$type<Array<{
-    type: string;
-    url: string;
-    name: string;
-  }>>(),
-  isEditable: boolean("is_editable").default(true).notNull(),
-  editableUntil: timestamp("editable_until"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+export const insertHealthRecordSchema = z.object({
+  id: z.string().optional(),
+  patientId: z.string(),
+  hospitalId: z.string(),
+  doctorId: z.string(),
+  dateTime: z.preprocess((arg) => new Date(arg as any), z.date()),
+  diseaseName: z.string(),
+  diseaseDescription: z.string(),
+  treatment: z.string().nullable().optional(),
+  prescription: z.string().nullable().optional(),
+  riskLevel: z.string(),
+  emergencyWarnings: z.string().nullable().optional(),
+  mediaFiles: z.array(z.object({ type: z.string(), url: z.string(), name: z.string() })).optional(),
 });
 
-export const healthRecordsRelations = relations(healthRecords, ({ one, many }) => ({
-  patient: one(patients, {
-    fields: [healthRecords.patientId],
-    references: [patients.id],
-  }),
-  hospital: one(hospitals, {
-    fields: [healthRecords.hospitalId],
-    references: [hospitals.id],
-  }),
-  doctor: one(doctors, {
-    fields: [healthRecords.doctorId],
-    references: [doctors.id],
-  }),
-  notes: many(doctorNotes),
-}));
-
-// Doctor Notes table - for doctors to add notes to patient records
-export const doctorNotes = pgTable("doctor_notes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  healthRecordId: varchar("health_record_id").references(() => healthRecords.id).notNull(),
-  doctorUserId: varchar("doctor_user_id").references(() => users.id).notNull(),
-  note: text("note").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+export const insertDoctorNoteSchema = z.object({
+  id: z.string().optional(),
+  healthRecordId: z.string(),
+  doctorUserId: z.string(),
+  note: z.string(),
 });
 
-export const doctorNotesRelations = relations(doctorNotes, ({ one }) => ({
-  healthRecord: one(healthRecords, {
-    fields: [doctorNotes.healthRecordId],
-    references: [healthRecords.id],
-  }),
-  doctor: one(users, {
-    fields: [doctorNotes.doctorUserId],
-    references: [users.id],
-  }),
-}));
-
-// Insert schemas
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertHospitalSchema = createInsertSchema(hospitals).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertDoctorSchema = createInsertSchema(doctors).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertPatientSchema = createInsertSchema(patients).omit({
-  id: true,
-  createdAt: true,
-});
-
-export const insertHealthRecordSchema = createInsertSchema(healthRecords).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-
-export const insertDoctorNoteSchema = createInsertSchema(doctorNotes).omit({
-  id: true,
-  createdAt: true,
-});
-
-// Types
-export type User = typeof users.$inferSelect;
+// Export types
 export type InsertUser = z.infer<typeof insertUserSchema>;
-
-export type Hospital = typeof hospitals.$inferSelect;
 export type InsertHospital = z.infer<typeof insertHospitalSchema>;
-
-export type Doctor = typeof doctors.$inferSelect;
 export type InsertDoctor = z.infer<typeof insertDoctorSchema>;
-
-export type Patient = typeof patients.$inferSelect;
 export type InsertPatient = z.infer<typeof insertPatientSchema>;
-
-export type HealthRecord = typeof healthRecords.$inferSelect;
 export type InsertHealthRecord = z.infer<typeof insertHealthRecordSchema>;
-
-export type DoctorNote = typeof doctorNotes.$inferSelect;
 export type InsertDoctorNote = z.infer<typeof insertDoctorNoteSchema>;
+
+export type User = IUser;
+export type Hospital = IHospital;
+export type Doctor = IDoctor;
+export type Patient = IPatient;
+export type HealthRecord = IHealthRecord;
+export type DoctorNote = IDoctorNote;

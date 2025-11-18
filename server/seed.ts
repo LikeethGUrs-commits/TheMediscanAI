@@ -1,67 +1,76 @@
-import { db } from "./db";
-import { hospitals, doctors, patients, healthRecords, users, doctorNotes } from "@shared/schema";
+import "./db"; // ensure DB connected
 import bcrypt from "bcryptjs";
+import {
+  Hospitals,
+  Doctors,
+  Patients,
+  HealthRecords,
+  Users,
+  DoctorNotes,
+} from "@shared/schema";
 
 async function seed() {
   try {
     console.log("🌱 Starting database seed...");
 
     // Clear existing data
-    await db.delete(healthRecords);
-    await db.delete(doctorNotes);
-    await db.delete(patients);
-    await db.delete(doctors);
-    await db.delete(hospitals);
-    await db.delete(users);
+    await HealthRecords.deleteMany({});
+    await DoctorNotes.deleteMany({});
+    await Patients.deleteMany({});
+    await Doctors.deleteMany({});
+    await Hospitals.deleteMany({});
+    await Users.deleteMany({});
 
     console.log("✅ Cleared existing data");
 
     // Create 2 hospitals in Chikkamagalur
-    const [hospital1, hospital2] = await db.insert(hospitals).values([
-      {
-        hospitalId: "HOSP001",
-        name: "Chikkamagalur District Hospital",
-        location: "Chikkamagalur, Karnataka",
-        contactNumber: "+91 8262 220100",
-        email: "contact@cdh.gov.in",
-      },
-      {
-        hospitalId: "HOSP002",
-        name: "Sri Siddhartha Medical College",
-        location: "Chikkamagalur, Karnataka",
-        contactNumber: "+91 8262 221456",
-        email: "info@ssmch.ac.in",
-      },
-    ]).returning();
+    const hospital1 = await Hospitals.create({
+      id: `h-${Date.now()}-1`,
+      hospitalId: "HOSP001",
+      name: "Chikkamagalur District Hospital",
+      location: "Chikkamagalur, Karnataka",
+      contactNumber: "+91 8262 220100",
+      email: "contact@cdh.gov.in",
+    });
+
+    const hospital2 = await Hospitals.create({
+      id: `h-${Date.now()}-2`,
+      hospitalId: "HOSP002",
+      name: "Sri Siddhartha Medical College",
+      location: "Chikkamagalur, Karnataka",
+      contactNumber: "+91 8262 221456",
+      email: "info@ssmch.ac.in",
+    });
 
     console.log("✅ Created 2 hospitals");
 
     // Create 10 doctors (5 per hospital)
     const doctorData = [
       // Hospital 1 doctors
-      { name: "Dr. Rajesh Kumar", specialization: "Cardiology", hospital: hospital1 },
-      { name: "Dr. Priya Sharma", specialization: "Neurology", hospital: hospital1 },
-      { name: "Dr. Arjun Reddy", specialization: "Orthopedics", hospital: hospital1 },
-      { name: "Dr. Lakshmi Rao", specialization: "Pediatrics", hospital: hospital1 },
-      { name: "Dr. Suresh Naik", specialization: "General Medicine", hospital: hospital1 },
+      { name: "Dr. Rajesh Kumar", specialization: "Cardiology", hospitalId: hospital1.id },
+      { name: "Dr. Priya Sharma", specialization: "Neurology", hospitalId: hospital1.id },
+      { name: "Dr. Arjun Reddy", specialization: "Orthopedics", hospitalId: hospital1.id },
+      { name: "Dr. Lakshmi Rao", specialization: "Pediatrics", hospitalId: hospital1.id },
+      { name: "Dr. Suresh Naik", specialization: "General Medicine", hospitalId: hospital1.id },
       // Hospital 2 doctors
-      { name: "Dr. Manjunath Gowda", specialization: "Surgery", hospital: hospital2 },
-      { name: "Dr. Sneha Patil", specialization: "Gynecology", hospital: hospital2 },
-      { name: "Dr. Vikram Shetty", specialization: "Dermatology", hospital: hospital2 },
-      { name: "Dr. Anitha Murthy", specialization: "Ophthalmology", hospital: hospital2 },
-      { name: "Dr. Kiran Hegde", specialization: "ENT", hospital: hospital2 },
+      { name: "Dr. Manjunath Gowda", specialization: "Surgery", hospitalId: hospital2.id },
+      { name: "Dr. Sneha Patil", specialization: "Gynecology", hospitalId: hospital2.id },
+      { name: "Dr. Vikram Shetty", specialization: "Dermatology", hospitalId: hospital2.id },
+      { name: "Dr. Anitha Murthy", specialization: "Ophthalmology", hospitalId: hospital2.id },
+      { name: "Dr. Kiran Hegde", specialization: "ENT", hospitalId: hospital2.id },
     ];
 
-    const createdDoctors = await db.insert(doctors).values(
+    const createdDoctors = await Doctors.create(
       doctorData.map((doc, idx) => ({
+        id: `doc-${Date.now()}-${idx}`,
         doctorId: `DOC${String(idx + 1).padStart(3, "0")}`,
         name: doc.name,
         specialization: doc.specialization,
-        hospitalId: doc.hospital.id,
+        hospitalId: doc.hospitalId,
         contactNumber: `+91 98${Math.floor(Math.random() * 90000000 + 10000000)}`,
         email: doc.name.toLowerCase().replace(/\s+/g, ".").replace("dr.", "") + "@hospital.com",
       }))
-    ).returning();
+    );
 
     console.log("✅ Created 10 doctors");
 
@@ -95,7 +104,12 @@ async function seed() {
       });
     }
 
-    const createdPatients = await db.insert(patients).values(patientRecords).returning();
+    const createdPatients = await Patients.create(
+      patientRecords.map((p, idx) => ({
+        id: `pt-${Date.now()}-${idx}`,
+        ...p,
+      }))
+    );
     console.log("✅ Created 200 patients");
 
     // Create health records for patients (1-5 records per patient)
@@ -135,23 +149,24 @@ async function seed() {
       "Symptomatic treatment",
     ];
 
-    const healthRecordData = [];
+    const healthRecordData: any[] = [];
     for (const patient of createdPatients) {
       const numRecords = Math.floor(Math.random() * 5) + 1;
       const hospital = Math.random() < 0.5 ? hospital1 : hospital2;
-      const availableDoctors = createdDoctors.filter(d => d.hospitalId === hospital.id);
-      
+      const availableDoctors = createdDoctors.filter((d: any) => d.hospitalId === hospital.id);
+
       for (let i = 0; i < numRecords; i++) {
         const disease = diseases[Math.floor(Math.random() * diseases.length)];
         const doctor = availableDoctors[Math.floor(Math.random() * availableDoctors.length)];
         const daysAgo = Math.floor(Math.random() * 365);
         const dateTime = new Date();
         dateTime.setDate(dateTime.getDate() - daysAgo);
-        
+
         healthRecordData.push({
-          patientId: patient.id,
+          id: `hr-${Date.now()}-${Math.random()}`,
+          patientId: (patient as any).id,
           hospitalId: hospital.id,
-          doctorId: doctor.id,
+          doctorId: (doctor as any).id,
           dateTime,
           diseaseName: disease.name,
           diseaseDescription: disease.desc,
@@ -165,14 +180,15 @@ async function seed() {
       }
     }
 
-    await db.insert(healthRecords).values(healthRecordData);
+    await HealthRecords.create(healthRecordData);
     console.log(`✅ Created ${healthRecordData.length} health records`);
 
     // Create demo users for testing
     const hashedPassword = await bcrypt.hash("password123", 10);
     
-    await db.insert(users).values([
+    await Users.create([
       {
+        id: `u-${Date.now()}-1`,
         name: "Dr. Rajesh Kumar",
         role: "doctor",
         roleId: "DOC001",
@@ -180,14 +196,16 @@ async function seed() {
         email: "rajesh.kumar@hospital.com",
       },
       {
-        name: createdPatients[0].name,
+        id: `u-${Date.now()}-2`,
+        name: (createdPatients as any)[0].name,
         role: "patient",
-        roleId: createdPatients[0].patientId,
+        roleId: (createdPatients as any)[0].patientId,
         password: hashedPassword,
-        phone: createdPatients[0].phone,
-        age: createdPatients[0].age,
+        phone: (createdPatients as any)[0].phone,
+        age: (createdPatients as any)[0].age,
       },
       {
+        id: `u-${Date.now()}-3`,
         name: "Admin - CDH",
         role: "hospital",
         roleId: "HOSP001",

@@ -34,12 +34,12 @@ export default function DoctorDashboard() {
   const [noteText, setNoteText] = useState("");
   const [showFaceRecognition, setShowFaceRecognition] = useState(false);
 
-  const { data: searchResults, isLoading: isSearching } = useQuery({
+  const { data: searchResults, isLoading: isSearching } = useQuery<PatientWithRecords[]>({
     queryKey: [`/api/patients/search?q=${searchQuery}&type=${searchType}`],
     enabled: searchQuery.length > 0,
   });
 
-  const { data: stats } = useQuery({
+  const { data: stats } = useQuery<{ totalPatients: number; recentCases: number; pendingReviews: number }>({
     queryKey: ["/api/doctors/stats"],
   });
 
@@ -81,11 +81,11 @@ export default function DoctorDashboard() {
       });
       setNoteText("");
       // Invalidate all search queries by matching the pattern
-      queryClient.invalidateQueries({ 
-        predicate: (query) => 
-          query.queryKey[0] && 
-          typeof query.queryKey[0] === 'string' && 
-          query.queryKey[0].startsWith('/api/patients/search')
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key0 = (query as any).queryKey?.[0];
+          return typeof key0 === "string" && key0.startsWith('/api/patients/search');
+        }
       });
     },
     onError: (error: Error) => {

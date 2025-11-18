@@ -1,0 +1,6 @@
+"id","name","age","role","email","phone","password","role_id","profile_image","created_at"
+"9aae0952-d02b-4f20-a00d-60ffe49c89fc","Admin - CDH",,"hospital","admin@cdh.gov.in",,"$2b$10$MF1rQkg/qkev/SJuQss7MOVYmVlLGJsROYbR9TntRUaI2i787Z3hK","HOSP001",,"""2025-11-17T09:43:51.821Z"""
+"bcd84a93-55e8-4161-bc47-63d3f2bdcf03","ABC","25","hospital","","","$2b$10$MF1rQkg/qkev/SJuQss7MOVYmVlLGJsROYbR9TntRUaI2i787Z3hK","HOSP100",,"""2025-11-17T10:12:16.532Z"""
+"cb8f3907-954b-4a83-8b1a-82dee0b61927","Dr. Rajesh Kumar",,"doctor","rajesh.kumar@hospital.com",,"$2b$10$MF1rQkg/qkev/SJuQss7MOVYmVlLGJsROYbR9TntRUaI2i787Z3hK","DOC001",,"""2025-11-17T09:43:51.821Z"""
+"d7b67240-533f-483c-9f07-f7b689f04396","Pooja Iyer","19","patient",,"+91 1792830750","$2b$10$MF1rQkg/qkev/SJuQss7MOVYmVlLGJsROYbR9TntRUaI2i787Z3hK","PT0001",,"""2025-11-17T09:43:51.821Z"""
+"fa0be57a-6f1b-42dd-9b0a-5a65a2640043","John","25","doctor","","","$2b$10$LxoYgwZwS0yayKUWFxCbQ.u5xrGDOmjktQjbW3Os36TbBd8ntRow.","DOC050",,"""2025-11-17T09:57:22.609Z"""

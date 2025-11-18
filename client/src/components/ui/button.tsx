@@ -12,6 +12,7 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-primary text-primary-foreground border border-primary-border",
+        link: "bg-transparent text-primary underline underline-offset-2 p-0",
         destructive:
           "bg-destructive text-destructive-foreground border border-destructive-border",
         outline:

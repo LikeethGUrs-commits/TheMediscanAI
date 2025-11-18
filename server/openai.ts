@@ -1,9 +1,20 @@
 import OpenAI from "openai";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// The newest OpenAI model is "gpt-5" (per project notes).
+const apiKey = process.env.OPENAI_API_KEY;
+
+let openai: OpenAI | null = null;
+if (apiKey) {
+  openai = new OpenAI({ apiKey });
+} else {
+  console.warn("OPENAI_API_KEY is not set. AI features will be disabled in development.");
+}
 
 export async function generatePatientSummary(patientHistory: string): Promise<string> {
+  if (!openai) {
+    throw new Error("OPENAI_API_KEY is not configured. Set OPENAI_API_KEY to use AI features.");
+  }
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-5",
