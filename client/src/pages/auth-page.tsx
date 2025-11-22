@@ -39,6 +39,190 @@ const registerSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 type RegisterFormData = z.infer<typeof registerSchema>;
 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+
+function ResetPasswordDialog() {
+  const [step, setStep] = useState<"identify" | "verify" | "reset">("identify");
+  const [open, setOpen] = useState(false);
+  const { toast } = useToast();
+
+  const [formData, setFormData] = useState({
+    role: "doctor",
+    roleId: "",
+    otp: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest("POST", "/api/auth/reset-password", data);
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Password updated successfully" });
+      setOpen(false);
+      setStep("identify");
+      setFormData({ ...formData, otp: "", newPassword: "", confirmPassword: "" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const otpMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest("POST", "/api/auth/forgot-password", data);
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "OTP Sent",
+        description: `Your OTP is: ${data.otp}`, // In real app, this would be "Check your email"
+      });
+      setStep("verify");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleIdentify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.roleId) {
+      toast({ title: "Error", description: "Please enter your ID", variant: "destructive" });
+      return;
+    }
+    otpMutation.mutate({ role: formData.role, roleId: formData.roleId });
+  };
+
+  const handleVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.otp) {
+      toast({ title: "Error", description: "Please enter OTP", variant: "destructive" });
+      return;
+    }
+    // In this flow, we just move to next step, actual verification happens at reset
+    // But we could verify OTP here too if we had a separate endpoint
+    setStep("reset");
+  };
+
+  const handleReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.newPassword !== formData.confirmPassword) {
+      toast({ title: "Error", description: "Passwords do not match", variant: "destructive" });
+      return;
+    }
+    if (formData.newPassword.length < 6) {
+      toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    resetMutation.mutate({
+      role: formData.role,
+      roleId: formData.roleId,
+      otp: formData.otp,
+      newPassword: formData.newPassword
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="link" className="p-0 h-auto font-normal text-muted-foreground hover:text-primary">
+          Forgot your password? Reset Password
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset Password</DialogTitle>
+          <DialogDescription>
+            {step === "identify" && "Enter your role and ID to receive an OTP."}
+            {step === "verify" && "Enter the OTP sent to your registered contact."}
+            {step === "reset" && "Enter your new password."}
+          </DialogDescription>
+        </DialogHeader>
+
+        {step === "identify" && (
+          <form onSubmit={handleIdentify} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select
+                value={formData.role}
+                onValueChange={(v) => setFormData({ ...formData, role: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="doctor">Doctor</SelectItem>
+                  <SelectItem value="patient">Patient</SelectItem>
+                  <SelectItem value="hospital">Hospital Authority</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>ID</Label>
+              <Input
+                placeholder="Enter your ID"
+                value={formData.roleId}
+                onChange={(e) => setFormData({ ...formData, roleId: e.target.value })}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={otpMutation.isPending}>
+              {otpMutation.isPending ? "Sending OTP..." : "Send OTP"}
+            </Button>
+          </form>
+        )}
+
+        {step === "verify" && (
+          <form onSubmit={handleVerify} className="space-y-4">
+            <div className="space-y-2">
+              <Label>OTP</Label>
+              <Input
+                placeholder="Enter 6-digit OTP"
+                value={formData.otp}
+                onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
+              />
+            </div>
+            <Button type="submit" className="w-full">Verify OTP</Button>
+          </form>
+        )}
+
+        {step === "reset" && (
+          <form onSubmit={handleReset} className="space-y-4">
+            <div className="space-y-2">
+              <Label>New Password</Label>
+              <Input
+                type="password"
+                placeholder="New password"
+                value={formData.newPassword}
+                onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Confirm Password</Label>
+              <Input
+                type="password"
+                placeholder="Confirm new password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={resetMutation.isPending}>
+              {resetMutation.isPending ? "Resetting..." : "Reset Password"}
+            </Button>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AuthPage() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -77,7 +261,7 @@ export default function AuthPage() {
         title: "Login successful",
         description: `Welcome back, ${user.name}!`,
       });
-      
+
       if (user.role === "doctor") {
         navigate("/doctor/dashboard");
       } else if (user.role === "patient") {
@@ -105,7 +289,7 @@ export default function AuthPage() {
         title: "Registration successful",
         description: `Welcome, ${user.name}!`,
       });
-      
+
       if (user.role === "doctor") {
         navigate("/doctor/dashboard");
       } else if (user.role === "patient") {
@@ -164,8 +348,8 @@ export default function AuthPage() {
           <div className="flex items-center justify-center mb-4">
             <Activity className="h-10 w-10 text-primary" />
           </div>
-          <CardTitle className="text-3xl font-bold">HealthHub</CardTitle>
-          <CardDescription>Patient History Retrieval System</CardDescription>
+          <CardTitle className="text-3xl font-bold">MediScan AI</CardTitle>
+          <CardDescription>Instant Patient History Retrieval</CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
@@ -264,10 +448,7 @@ export default function AuthPage() {
               </Form>
 
               <div className="text-center text-sm text-muted-foreground">
-                Forgot your password?{" "}
-                <Button variant="link" className="p-0 h-auto" data-testid="link-reset-password">
-                  Reset Password
-                </Button>
+                <ResetPasswordDialog />
               </div>
             </TabsContent>
 

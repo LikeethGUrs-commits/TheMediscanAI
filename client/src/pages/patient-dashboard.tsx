@@ -17,6 +17,9 @@ import { RiskBadge } from "@/components/risk-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLocation } from "wouter";
 import { Patient, HealthRecord, Hospital, Doctor } from "@shared/schema";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LabResults } from "@/components/LabResults";
+import { PredictionDashboard } from "@/components/PredictionDashboard";
 
 type PatientWithRecords = Patient & {
   healthRecords: Array<HealthRecord & { hospital: Hospital; doctor: Doctor }>;
@@ -284,92 +287,110 @@ export default function PatientDashboard() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>My Health History</CardTitle>
+                    <CardTitle>My Health Information</CardTitle>
                     <CardDescription>
-                      {patientData.healthRecords?.length || 0} medical records
+                      View your medical history, lab results, and health predictions
                     </CardDescription>
                   </div>
                   <Button onClick={handleDownloadPDF} data-testid="button-download-history">
                     <Download className="h-4 w-4 mr-2" />
-                    Download All
+                    Download History
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                {patientData.healthRecords && patientData.healthRecords.length > 0 ? (
-                  <div className="space-y-4">
-                    {patientData.healthRecords.map((record) => (
-                      <Card key={record.id}>
-                        <CardContent className="p-6 space-y-4">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-semibold text-lg">{record.diseaseName}</h4>
-                                <RiskBadge level={record.riskLevel as any} />
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(record.dateTime).toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
+                <Tabs defaultValue="history" className="w-full">
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="history">Medical History</TabsTrigger>
+                    <TabsTrigger value="labs">Lab Results</TabsTrigger>
+                    <TabsTrigger value="predictions">Health Predictions</TabsTrigger>
+                  </TabsList>
 
-                          <Separator />
+                  <TabsContent value="history" className="mt-6">
+                    {patientData.healthRecords && patientData.healthRecords.length > 0 ? (
+                      <div className="space-y-4">
+                        {patientData.healthRecords.map((record) => (
+                          <Card key={record.id}>
+                            <CardContent className="p-6 space-y-4">
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-semibold text-lg">{record.diseaseName}</h4>
+                                    <RiskBadge level={record.riskLevel as any} />
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">
+                                    {new Date(record.dateTime).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
 
-                          <div className="space-y-2 text-sm">
-                            <div>
-                              <span className="font-medium">Hospital: </span>
-                              {record.hospital.name} ({record.hospital.location})
-                            </div>
-                            <div>
-                              <span className="font-medium">Doctor: </span>
-                              {record.doctor.name} - {record.doctor.specialization || "General"}
-                            </div>
-                            <div>
-                              <span className="font-medium">Description: </span>
-                              {record.diseaseDescription}
-                            </div>
-                            {record.treatment && (
-                              <div>
-                                <span className="font-medium">Treatment: </span>
-                                {record.treatment}
-                              </div>
-                            )}
-                            {record.prescription && (
-                              <div>
-                                <span className="font-medium">Prescription: </span>
-                                {record.prescription}
-                              </div>
-                            )}
-                            {record.emergencyWarnings && (
-                              <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 mt-2">
-                                <span className="font-medium text-destructive">⚠ Warning: </span>
-                                {record.emergencyWarnings}
-                              </div>
-                            )}
-                          </div>
+                              <Separator />
 
-                          {record.mediaFiles && record.mediaFiles.length > 0 && (
-                            <div>
-                              <p className="text-sm font-medium mb-2">Attached Files:</p>
-                              <div className="flex flex-wrap gap-2">
-                                {record.mediaFiles.map((file, idx) => (
-                                  <Badge key={idx} variant="secondary">
-                                    {file.name}
-                                  </Badge>
-                                ))}
+                              <div className="space-y-2 text-sm">
+                                <div>
+                                  <span className="font-medium">Hospital: </span>
+                                  {record.hospital.name} ({record.hospital.location})
+                                </div>
+                                <div>
+                                  <span className="font-medium">Doctor: </span>
+                                  {record.doctor.name} - {record.doctor.specialization || "General"}
+                                </div>
+                                <div>
+                                  <span className="font-medium">Description: </span>
+                                  {record.diseaseDescription}
+                                </div>
+                                {record.treatment && (
+                                  <div>
+                                    <span className="font-medium">Treatment: </span>
+                                    {record.treatment}
+                                  </div>
+                                )}
+                                {record.prescription && (
+                                  <div>
+                                    <span className="font-medium">Prescription: </span>
+                                    {record.prescription}
+                                  </div>
+                                )}
+                                {record.emergencyWarnings && (
+                                  <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 mt-2">
+                                    <span className="font-medium text-destructive">⚠ Warning: </span>
+                                    {record.emergencyWarnings}
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p>No medical records found</p>
-                    <p className="text-sm mt-2">Your health records will appear here</p>
-                  </div>
-                )}
+
+                              {record.mediaFiles && record.mediaFiles.length > 0 && (
+                                <div>
+                                  <p className="text-sm font-medium mb-2">Attached Files:</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {record.mediaFiles.map((file, idx) => (
+                                      <Badge key={idx} variant="secondary">
+                                        {file.name}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <p>No medical records found</p>
+                        <p className="text-sm mt-2">Your health records will appear here</p>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="labs" className="mt-6">
+                    <LabResults patientId={patientData.id} canUpload={false} />
+                  </TabsContent>
+
+                  <TabsContent value="predictions" className="mt-6">
+                    <PredictionDashboard patientId={patientData.id} canGenerate={false} />
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </>

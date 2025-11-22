@@ -1,39 +1,29 @@
-import OpenAI from "openai";
+import { OpenAI } from 'openai';
 
-// The newest OpenAI model is "gpt-4" (updated from gpt-5 which doesn't exist)
-const apiKey = process.env.OPENAI_API_KEY;
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-let openai: OpenAI | null = null;
-if (apiKey) {
-  openai = new OpenAI({ apiKey });
-} else {
-  console.warn("OPENAI_API_KEY is not set. AI features will be disabled in development.");
-}
-
-export async function generatePatientSummary(patientHistory: string): Promise<string> {
-  if (!openai) {
-    throw new Error("OPENAI_API_KEY is not configured. Set OPENAI_API_KEY to use AI features.");
-  }
-
+export async function generatePatientSummary(history: string): Promise<string> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model:"gpt-4.1-mini",
       messages: [
         {
-          role: "system",
-          content: "You are a medical AI assistant. Summarize patient medical histories concisely, highlighting key diagnoses, treatments, risk factors, and recommendations. Format your response with clear sections: Chief Complaints, Diagnoses, Treatments, and Recommendations."
+          role: 'system',
+          content: 'You are a medical professional summarizing patient medical histories. Provide a concise, professional summary highlighting key diagnoses, treatments, and risk levels.',
         },
         {
-          role: "user",
-          content: `Summarize this patient's medical history:\n\n${patientHistory}`
-        }
+          role: 'user',
+          content: `Please summarize the following patient medical history:\n\n${history}`,
+        },
       ],
-      max_tokens: 2048,
+      max_tokens: 500,
+      temperature: 0.3,
     });
-
-    return response.choices[0].message.content || "Unable to generate summary";
+    return response.choices[0].message.content || 'Summary not available';
   } catch (error) {
-    console.error("OpenAI API error:", error);
-    throw new Error("Failed to generate AI summary");
+    console.error('OpenAI summarization error:', error);
+    throw new Error('Failed to generate summary with OpenAI');
   }
 }

@@ -8,6 +8,12 @@ import {
   type DoctorNote, type InsertDoctorNote,
   insertHealthRecordSchema,
 } from "@shared/schema";
+import {
+  HealthPredictions, LabResults,
+  type HealthPrediction, type InsertHealthPrediction,
+  type LabResult, type InsertLabResult,
+  insertHealthPredictionSchema, insertLabResultSchema,
+} from "@shared/lab-prediction-schema";
 import { db } from "./db";
 import bcrypt from "bcryptjs";
 
@@ -15,7 +21,7 @@ export interface IStorage {
   // Auth
   createUser(user: InsertUser): Promise<User>;
   getUserByRoleId(roleId: string, role: string): Promise<User | undefined>;
-  
+
   // Patients
   getPatientById(id: string): Promise<Patient | undefined>;
   getPatientByUserId(userId: string): Promise<Patient | undefined>;
@@ -24,24 +30,40 @@ export interface IStorage {
   updatePatient(id: string, data: Partial<Patient>): Promise<Patient>;
   getAllPatients(): Promise<Patient[]>;
   getAllPatientsByHospital(hospitalId: string): Promise<Patient[]>;
-  
+
   // Doctors
   getDoctorsByHospital(hospitalId: string): Promise<Doctor[]>;
-  getDoctorStats(): Promise<any>;
+  getDoctorStats(doctorId?: string): Promise<any>;
   getDoctorById(id: string): Promise<Doctor | undefined>;
-  
+
   // Hospitals
   getHospitalByHospitalId(hospitalId: string): Promise<Hospital | undefined>;
-  
+
   // Health Records
   createHealthRecord(record: InsertHealthRecord): Promise<HealthRecord>;
   getHealthRecordsByPatient(patientId: string): Promise<any[]>;
   getRecentRecordsByHospital(hospitalId: string): Promise<any[]>;
   getHealthRecordById(id: string): Promise<HealthRecord | undefined>;
   updateHealthRecord(id: string, data: Partial<HealthRecord>): Promise<HealthRecord>;
-  
+
   // Doctor Notes
   createDoctorNote(note: InsertDoctorNote): Promise<DoctorNote>;
+
+  // Health Predictions
+  createHealthPrediction(prediction: InsertHealthPrediction): Promise<HealthPrediction>;
+  getPatientPredictions(patientId: string): Promise<HealthPrediction[]>;
+  getLatestPrediction(patientId: string): Promise<HealthPrediction | undefined>;
+
+  // Lab Results
+  createLabResult(labResult: InsertLabResult): Promise<LabResult>;
+  getPatientLabResults(patientId: string, filters?: { testType?: string; startDate?: Date; endDate?: Date }): Promise<LabResult[]>;
+  getLabResultById(id: string): Promise<LabResult | undefined>;
+  getLabTrends(patientId: string, testName: string): Promise<any>;
+
+  // Password Reset
+  saveResetOtp(roleId: string, role: string, otp: string): Promise<void>;
+  verifyResetOtp(roleId: string, role: string, otp: string): Promise<boolean>;
+  updateUserPassword(roleId: string, role: string, password: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -52,7 +74,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserByRoleId(roleId: string, role: string): Promise<User | undefined> {
-    const user = await Users.findOne({ roleId, role }).maxTimeMS(30000).lean();
+    // Case-insensitive search for roleId
+    const user = await Users.findOne({
+      roleId: { $regex: new RegExp(`^${roleId}$`, 'i') },
+      role
+    }).maxTimeMS(30000).lean();
     return user as unknown as User | undefined;
   }
 
@@ -134,10 +160,58 @@ export class DatabaseStorage implements IStorage {
     return doctor as unknown as Doctor | undefined;
   }
 
-  async getDoctorStats(): Promise<any> {
-    const totalPatients = await Patients.countDocuments();
+  async getDoctorStats(doctorId?: string): Promise<any> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    if (doctorId) {
+      console.log(`[getDoctorStats] Looking up stats for doctorId (roleId): ${doctorId}`);
+
+      // doctorId passed here is the roleId (e.g. DOC001)
+      // Case-insensitive search for the doctor
+      const doctor = await Doctors.findOne({
+        doctorId: { $regex: new RegExp(`^${doctorId}$`, 'i') }
+      }).lean() as Doctor | null;
+
+      if (doctor) {
+        console.log(`[getDoctorStats] Found doctor: ${doctor.name} (Internal ID: ${doctor.id})`);
+        const internalId = doctor.id;
+
+        // Stats for specific doctor using internal ID
+        const totalPatients = await HealthRecords.find({ doctorId: internalId }).distinct("patientId");
+        const recentCases = await HealthRecords.countDocuments({
+          doctorId: internalId,
+          dateTime: { $gt: thirtyDaysAgo }
+        });
+        const totalConsultations = await HealthRecords.countDocuments({ doctorId: internalId });
+
+        const criticalCases = await HealthRecords.countDocuments({
+          doctorId: internalId,
+          riskLevel: { $in: ["high", "critical"] },
+          dateTime: { $gt: thirtyDaysAgo }
+        });
+
+        console.log(`[getDoctorStats] Stats: Patients=${totalPatients.length}, Consultations=${totalConsultations}`);
+
+        return {
+          totalPatients: totalPatients.length || 0,
+          recentCases: recentCases || 0,
+          totalConsultations: totalConsultations || 0,
+          criticalCases: criticalCases || 0
+        };
+      } else {
+        console.log(`[getDoctorStats] Doctor not found for roleId: ${doctorId}`);
+        return {
+          totalPatients: 0,
+          recentCases: 0,
+          totalConsultations: 0,
+          criticalCases: 0
+        };
+      }
+    }
+
+    // Global stats (fallback)
+    const totalPatients = await Patients.countDocuments();
     const recentCases = await HealthRecords.countDocuments({ dateTime: { $gt: thirtyDaysAgo } });
 
     return {
@@ -198,6 +272,159 @@ export class DatabaseStorage implements IStorage {
       note: insertNote.note,
     });
     return note as unknown as DoctorNote;
+  }
+
+  // Health Predictions
+  async createHealthPrediction(insertPrediction: InsertHealthPrediction): Promise<HealthPrediction> {
+    const parsed = insertHealthPredictionSchema.parse(insertPrediction);
+    const prediction = await HealthPredictions.create({
+      ...parsed,
+      id: parsed.id || `pred-${Date.now()}-${Math.random()}`,
+    });
+    return prediction as unknown as HealthPrediction;
+  }
+
+  async getPatientPredictions(patientId: string): Promise<HealthPrediction[]> {
+    const predictions = await HealthPredictions.find({ patientId })
+      .sort({ predictionDate: -1 })
+      .lean();
+    return predictions as unknown as HealthPrediction[];
+  }
+
+  async getLatestPrediction(patientId: string): Promise<HealthPrediction | undefined> {
+    const prediction = await HealthPredictions.findOne({ patientId })
+      .sort({ predictionDate: -1 })
+      .lean();
+    return prediction as unknown as HealthPrediction | undefined;
+  }
+
+  // Lab Results
+  async createLabResult(insertLabResult: InsertLabResult): Promise<LabResult> {
+    const parsed = insertLabResultSchema.parse(insertLabResult);
+    const labResult = await LabResults.create({
+      ...parsed,
+      id: parsed.id || `lab-${Date.now()}-${Math.random()}`,
+    });
+    return labResult as unknown as LabResult;
+  }
+
+  async getPatientLabResults(
+    patientId: string,
+    filters?: { testType?: string; startDate?: Date; endDate?: Date }
+  ): Promise<LabResult[]> {
+    const query: any = { patientId };
+
+    if (filters?.testType) {
+      query.testType = filters.testType;
+    }
+
+    if (filters?.startDate || filters?.endDate) {
+      query.testDate = {};
+      if (filters.startDate) query.testDate.$gte = filters.startDate;
+      if (filters.endDate) query.testDate.$lte = filters.endDate;
+    }
+
+    const labResults = await LabResults.find(query)
+      .sort({ testDate: -1 })
+      .lean();
+    return labResults as unknown as LabResult[];
+  }
+
+  async getLabResultById(id: string): Promise<LabResult | undefined> {
+    const labResult = await LabResults.findOne({ id }).lean();
+    return labResult as unknown as LabResult | undefined;
+  }
+
+  async getLabTrends(patientId: string, testName: string): Promise<any> {
+    const labResults = await LabResults.find({ patientId })
+      .sort({ testDate: 1 })
+      .lean();
+
+    // Extract data points for the specific test
+    const dataPoints: Array<{ date: Date; value: number }> = [];
+    let normalRange: { min: number; max: number } | null = null;
+
+    for (const result of labResults) {
+      const testResult = (result as any).results.find((r: any) => r.testName === testName);
+      if (testResult) {
+        dataPoints.push({
+          date: (result as any).testDate,
+          value: testResult.value
+        });
+        if (!normalRange) {
+          normalRange = testResult.normalRange;
+        }
+      }
+    }
+
+    // Determine trend
+    let trend = 'stable';
+    if (dataPoints.length >= 2) {
+      const recent = dataPoints.slice(-3);
+      const older = dataPoints.slice(0, -3);
+
+      if (recent.length > 0 && older.length > 0) {
+        const recentAvg = recent.reduce((sum, p) => sum + p.value, 0) / recent.length;
+        const olderAvg = older.reduce((sum, p) => sum + p.value, 0) / older.length;
+
+        const change = ((recentAvg - olderAvg) / olderAvg) * 100;
+
+        if (Math.abs(change) < 5) {
+          trend = 'stable';
+        } else if (normalRange) {
+          // Determine if moving towards or away from normal
+          const targetMid = (normalRange.min + normalRange.max) / 2;
+          const recentDist = Math.abs(recentAvg - targetMid);
+          const olderDist = Math.abs(olderAvg - targetMid);
+
+          trend = recentDist < olderDist ? 'improving' : 'worsening';
+        } else {
+          trend = change > 0 ? 'increasing' : 'decreasing';
+        }
+      }
+    }
+
+    return {
+      testName,
+      data: dataPoints,
+      trend,
+      normalRange
+    };
+  }
+
+  // Password Reset (In-memory for demo)
+  private otps = new Map<string, { otp: string; expires: number }>();
+
+  async saveResetOtp(roleId: string, role: string, otp: string): Promise<void> {
+    const key = `${role}:${roleId}`;
+    this.otps.set(key, {
+      otp,
+      expires: Date.now() + 10 * 60 * 1000 // 10 minutes
+    });
+  }
+
+  async verifyResetOtp(roleId: string, role: string, otp: string): Promise<boolean> {
+    const key = `${role}:${roleId}`;
+    const data = this.otps.get(key);
+
+    if (!data) return false;
+    if (Date.now() > data.expires) {
+      this.otps.delete(key);
+      return false;
+    }
+
+    return data.otp === otp;
+  }
+
+  async updateUserPassword(roleId: string, role: string, password: string): Promise<void> {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await Users.findOneAndUpdate(
+      { roleId, role },
+      { password: hashedPassword }
+    );
+    // Clear OTP after successful reset
+    const key = `${role}:${roleId}`;
+    this.otps.delete(key);
   }
 }
 

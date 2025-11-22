@@ -79,7 +79,7 @@ async function seed() {
     const firstNames = ["Arun", "Bhavani", "Chetan", "Deepa", "Esha", "Farhan", "Geeta", "Hari", "Indira", "Jagdish",
       "Kavya", "Lakshmana", "Manoj", "Nandini", "Omar", "Pooja", "Qasim", "Radha", "Sanjay", "Tanvi",
       "Uma", "Vijay", "Waqar", "Yashoda", "Zara"];
-    
+
     const lastNames = ["Acharya", "Bhat", "Desai", "Gowda", "Hegde", "Iyer", "Joshi", "Kulkarni", "Murthy", "Naik",
       "Patel", "Reddy", "Shetty", "Rao", "Verma"];
 
@@ -91,7 +91,7 @@ async function seed() {
       const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
       const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
       const name = `${firstName} ${lastName}`;
-      
+
       patientRecords.push({
         patientId: `PT${String(i + 1).padStart(4, "0")}`,
         name,
@@ -184,36 +184,62 @@ async function seed() {
     await HealthRecords.create(healthRecordData);
     console.log(`✅ Created ${healthRecordData.length} health records`);
 
-    // Create demo users for testing
+    // Create users for all entities
     const hashedPassword = await bcrypt.hash("password123", 10);
-    
-    await Users.create([
-      {
-        id: `u-${Date.now()}-1`,
-        name: "Dr. Rajesh Kumar",
+    const users = [];
+
+    // Hospital Users
+    users.push({
+      id: `u-${Date.now()}-h1`,
+      name: hospital1.name,
+      role: "hospital",
+      roleId: hospital1.hospitalId,
+      password: hashedPassword,
+      email: hospital1.email,
+    });
+    users.push({
+      id: `u-${Date.now()}-h2`,
+      name: hospital2.name,
+      role: "hospital",
+      roleId: hospital2.hospitalId,
+      password: hashedPassword,
+      email: hospital2.email,
+    });
+
+    // Doctor Users
+    for (const doc of createdDoctors) {
+      users.push({
+        id: `u-${Date.now()}-${doc.doctorId}`,
+        name: doc.name,
         role: "doctor",
-        roleId: "DOC001",
+        roleId: doc.doctorId,
         password: hashedPassword,
-        email: "rajesh.kumar@hospital.com",
-      },
-      {
-        id: `u-${Date.now()}-2`,
-        name: (createdPatients as any)[0].name,
+        email: doc.email,
+      });
+    }
+
+    // Patient Users
+    for (const pat of createdPatients) {
+      users.push({
+        id: `u-${Date.now()}-${pat.patientId}`,
+        name: pat.name,
         role: "patient",
-        roleId: (createdPatients as any)[0].patientId,
+        roleId: pat.patientId,
         password: hashedPassword,
-        phone: (createdPatients as any)[0].phone,
-        age: (createdPatients as any)[0].age,
-      },
-      {
-        id: `u-${Date.now()}-3`,
-        name: "Admin - CDH",
-        role: "hospital",
-        roleId: "HOSP001",
-        password: hashedPassword,
-        email: "admin@cdh.gov.in",
-      },
-    ]);
+        phone: pat.phone,
+        age: pat.age,
+      });
+    }
+
+    await Users.create(users);
+
+    console.log(`✅ Created ${users.length} user accounts (password: password123)`);
+    console.log("\n🎉 Database seeded successfully!");
+    console.log("\nCredentials:");
+    console.log("All accounts have password: password123");
+    console.log(`Doctors: ${createdDoctors.length} accounts (IDs: DOC001 - DOC010)`);
+    console.log(`Patients: ${createdPatients.length} accounts (IDs: PT0001 - PT0200)`);
+    console.log(`Hospitals: 2 accounts (HOSP001, HOSP002)`);
 
     console.log("✅ Created demo users (password: password123)");
     console.log("\n🎉 Database seeded successfully!");
@@ -221,7 +247,7 @@ async function seed() {
     console.log("Doctor: DOC001 / password123");
     console.log(`Patient: ${createdPatients[0].patientId} / password123`);
     console.log("Hospital: HOSP001 / password123");
-    
+
     process.exit(0);
   } catch (error) {
     console.error("❌ Seed failed:", error);

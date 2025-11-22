@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RiskBadge } from "@/components/risk-badge";
+import { LabResults } from "@/components/LabResults";
 
 type UploadFormData = {
   patientId: string;
@@ -624,6 +625,29 @@ export default function HospitalDashboard() {
                     </Button>
                   </div>
                 </form>
+              </CardContent>
+            </Card>
+
+            {/* Lab Results Upload Section */}
+            <Card className="mt-8">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Plus className="h-5 w-5" />
+                  Upload Lab Results
+                </CardTitle>
+                <CardDescription>
+                  Add laboratory test results for patients. Results will be available to doctors and patients.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {selectedPatient ? (
+                  <LabResults patientId={selectedPatient.id} canUpload={true} />
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <p className="mb-2">Please select a patient from the search above</p>
+                    <p className="text-sm">Search for a patient to upload their lab results</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -1,16 +1,17 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { generatePatientSummary } from "./openai";
+import { spawn } from "child_process";
 import bcrypt from "bcryptjs";
 import { insertUserSchema, insertHealthRecordSchema, insertDoctorNoteSchema } from "@shared/schema";
+import { registerPredictionRoutes, registerLabRoutes } from "./prediction-lab-routes";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
     try {
       const validatedData = insertUserSchema.parse(req.body);
-      
+
       const existing = await storage.getUserByRoleId(validatedData.roleId, validatedData.role);
       if (existing) {
         return res.status(400).json({ message: "User with this ID already exists" });
@@ -18,7 +19,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const user = await storage.createUser(validatedData);
       const { password, ...userWithoutPassword } = user;
-      
+
       res.json(userWithoutPassword);
     } catch (error: any) {
       res.status(400).json({ message: error.message || "Registration failed" });
@@ -28,7 +29,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { roleId, password, role } = req.body;
-      
+
       const user = await storage.getUserByRoleId(roleId, role);
       if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
@@ -46,12 +47,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { roleId, role } = req.body;
+      console.log(`Forgot password request for role: ${role}, roleId: ${roleId}`);
+      const user = await storage.getUserByRoleId(roleId, role);
+      console.log(`User found: ${user ? 'yes' : 'no'}`);
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Generate 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      await storage.saveResetOtp(roleId, role, otp);
+
+      // In a real app, we would send this via email/SMS
+      // For demo, we return it in the response
+      res.json({ message: "OTP sent successfully", otp });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { roleId, role, otp, newPassword } = req.body;
+
+      const isValid = await storage.verifyResetOtp(roleId, role, otp);
+      if (!isValid) {
+        return res.status(400).json({ message: "Invalid or expired OTP" });
+      }
+
+      await storage.updateUserPassword(roleId, role, newPassword);
+      res.json({ message: "Password updated successfully" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to reset password" });
+    }
+  });
+
   // Patient routes
   app.get("/api/patients/search", async (req, res) => {
     try {
       const query = req.query.q as string;
       const searchType = req.query.type as "id" | "name" | "phone" || "name";
-      
+
       if (!query) {
         return res.json([]);
       }
@@ -113,7 +153,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Doctor routes
   app.get("/api/doctors/stats", async (req, res) => {
     try {
-      const stats = await storage.getDoctorStats();
+      // If we have a logged in user who is a doctor, get their specific stats
+      // Note: In a real app with proper middleware, we'd get user from req.user
+      // For this demo, we'll check if there's a query param or just return global stats
+      // But actually, the frontend doesn't pass the user ID in the query currently.
+      // Let's rely on the fact that the frontend calls this.
+
+      // Wait, the frontend uses `getAuthUser()` but doesn't send it in headers automatically for this simple fetch.
+      // Let's check if the frontend sends a query param `doctorId`.
+      const doctorId = req.query.doctorId as string;
+
+      const stats = await storage.getDoctorStats(doctorId);
       res.json(stats);
     } catch (error: any) {
       res.status(500).json({ message: error.message || "Failed to fetch stats" });
@@ -144,7 +194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const data = req.body;
       const hospitalRoleId = req.query.hospitalId as string || req.body.hospitalRoleId;
-      
+
       if (!hospitalRoleId) {
         return res.status(400).json({ message: "Hospital ID required" });
       }
@@ -235,7 +285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/notes", async (req, res) => {
     try {
       const { healthRecordId, doctorUserId, note } = req.body;
-      
+
       if (!healthRecordId || !doctorUserId || !note) {
         return res.status(400).json({ message: "Missing required fields" });
       }
@@ -258,7 +308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Summarization route
   app.post("/api/ai/summarize", async (req, res) => {
     try {
-      const { patientId } = req.body;
+      const { patientId, emergencyMode = true } = req.body;
       if (!patientId) {
         return res.status(400).json({ message: "Patient ID required" });
       }
@@ -268,7 +318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Patient not found" });
       }
 
-      // Format patient history for AI
+      // Format patient history for emergency summarizer
       const historyText = patient.healthRecords.map((record: any) => {
         return `Date: ${new Date(record.dateTime).toLocaleDateString()}
 Hospital: ${record.hospital.name}
@@ -281,9 +331,54 @@ ${record.emergencyWarnings ? `Warnings: ${record.emergencyWarnings}` : ""}
 ---`;
       }).join("\n\n");
 
-      const summary = await generatePatientSummary(historyText);
-      res.json({ summary });
+      // Use emergency summarizer via Python subprocess
+      const pythonProcess = spawn('python', ['server/emergency_summarizer.py'], {
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
+
+      const inputData = JSON.stringify({
+        history: historyText,
+        emergencyMode: emergencyMode
+      });
+      let output = '';
+      let errorOutput = '';
+
+      pythonProcess.stdin.write(inputData);
+      pythonProcess.stdin.end();
+
+      pythonProcess.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+
+      pythonProcess.on('close', (code) => {
+        try {
+          if (code !== 0) {
+            console.error('Python process error:', errorOutput);
+            return res.status(500).json({ message: "Failed to generate summary" });
+          }
+
+          const result = JSON.parse(output.trim());
+          if (result.error) {
+            console.error('Summarizer error:', result.error);
+            return res.status(500).json({ message: "Failed to generate summary" });
+          }
+
+          res.json({
+            summary: result.summary,
+            emergencyMode: emergencyMode
+          });
+        } catch (parseError) {
+          console.error('Parse error:', parseError);
+          res.status(500).json({ message: "Failed to generate summary" });
+        }
+      });
+
     } catch (error: any) {
+      console.error('Summarization error:', error);
       res.status(500).json({ message: error.message || "Failed to generate summary" });
     }
   });
@@ -303,6 +398,10 @@ ${record.emergencyWarnings ? `Warnings: ${record.emergencyWarnings}` : ""}
       res.status(500).json({ message: error.message || "Recognition failed" });
     }
   });
+
+  // Register prediction and lab result routes
+  registerPredictionRoutes(app);
+  registerLabRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;
